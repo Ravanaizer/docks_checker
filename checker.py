@@ -227,6 +227,6 @@ class DocumentArchitectureValidator:
 
 
 if __name__ == "__main__":
-    validator = DocumentArchitectureValidator("1.docx")
+    validator = DocumentArchitectureValidator("test.docx")
     errors = validator.validate()
     validator.print_report()
