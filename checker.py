@@ -26,6 +26,7 @@ class DocumentArchitectureValidator:
         self.filepath = filepath
         self.doc = Document(filepath)
         self.errors: List[ValidationError] = []
+        self.check_paragraph()
         self.paragraphs = self.doc.paragraphs
         self.tables = self.doc.tables
 
@@ -46,6 +47,13 @@ class DocumentArchitectureValidator:
             "\n".join([p.text.strip() for p in self.paragraphs if p.text.strip()])
         )
         self.full_text_lower = self.full_text.lower()
+
+    def check_paragraph(self):
+        """Delete empty paragraph (only enter)"""
+        for p in reversed(self.doc.paragraphs):
+            if not p.text.strip():
+                p._element.getparent().remove(p._element)
+                # p._p = None
 
     def _normalize_text(self, text: str) -> str:
         """Replaces all multiple whitespaces/tabs with single space."""
@@ -71,6 +79,7 @@ class DocumentArchitectureValidator:
         self._check_signature_block()
         self._check_appendix_format()
         self._check_table_fonts()
+        self._check_reduction_position()
         return self.errors
 
     def _check_preamble_structure(self):
@@ -132,6 +141,29 @@ class DocumentArchitectureValidator:
                 )
             )
 
+    def _check_reduction_position(self):
+        """Searches reduction list in normalized main text."""
+        control_patterns = [
+            r"довести\s+настоящий\s+приказ\s+до\s+сведения",
+            r"довести\s+до\s+сведения",
+            # r"довести",
+        ]
+
+        # Search in last 10 paragraphs of MAIN text
+        search_text = self._normalize_text(
+            "\n".join([p.text for p in self.main_paragraphs[-10:]])
+        ).lower()
+
+        if not any(re.search(p, search_text) for p in control_patterns):
+            self.errors.append(
+                ValidationError(
+                    rule="REDUCTION",
+                    message="No section that requires information",
+                    severity=Severity.CRITICAL,
+                    location="End of dispositive section",
+                )
+            )
+
     def _check_signature_block(self):
         """FIXED SIGNATURE BLOCK CHECK"""
         # After normalization "Джежора  Е.А." becomes "Джежора Е.А."
@@ -176,15 +208,28 @@ class DocumentArchitectureValidator:
                     )
 
     def _check_table_fonts(self):
-        if self.tables:
-            self.errors.append(
-                ValidationError(
-                    rule="TABLES",
-                    message=f"Tables found: {len(self.tables)}. Check font size (>= 8pt)",
-                    severity=Severity.INFO,
-                    location="Tables",
+        if not self.tables:
+            return
+
+        for table in self.tables:
+            if self._is_table_font_too_small(table):
+                self.errors.append(
+                    ValidationError(
+                        rule="TABLES",
+                        message="Font size is too small in table.",
+                        severity=Severity.WARNING,
+                        location="Tables",
+                    )
                 )
-            )
+
+    def _is_table_font_too_small(self, table):
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        if run.font.size and run.font.size.pt < 8:
+                            return True
+        return False
 
     def print_report(self):
         if not self.errors:
