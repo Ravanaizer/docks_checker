@@ -2,7 +2,11 @@ from typing import List
 
 from docx import Document
 
-from check_appendix import _check_appendix_format
+from check_appendix import (
+    _check_appendix_font_name,
+    _check_appendix_font_size,
+    _check_appendix_format,
+)
 from check_body import (
     _check_body_font_name,
     _check_body_font_size,
@@ -60,7 +64,6 @@ class DocumentArchitectureValidator:
         _check_command_word(self)
         _check_control_clause_position(self)
         _check_signature_block(self)
-        _check_appendix_format(self)
         _check_table_fonts_size(self)
         _check_table_fonts_name(self)
         _check_reduction_position(self)
@@ -69,6 +72,9 @@ class DocumentArchitectureValidator:
         _check_list_font_name(self)
         _check_signature_font_size(self)
         _check_indents(self)
+        _check_appendix_format(self)
+        _check_appendix_font_name(self)
+        _check_appendix_font_size(self)
         return self.errors
 
     def print_report(self) -> None:

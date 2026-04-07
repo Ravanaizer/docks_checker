@@ -277,7 +277,7 @@ def _check_indents(doc):
         0.05  # Allow small rounding differences from Word's internal precision
     )
 
-    for para in doc.main_paragraphs:
+    for para in doc.main_paragraphs[:-2]:
         # Skip empty paragraphs to avoid false positives
         if not para.text.strip():
             continue
@@ -315,7 +315,7 @@ def _check_indents(doc):
             doc.errors.append(
                 ValidationError(
                     "PARAGRAPH_INDENTS",
-                    f"First-line indent incorrect: {display_value} (expected {EXPECTED_INDENT_CM} cm) | Text: '{preview}'",
+                    f"First-line indent incorrect: {display_value} (expected {EXPECTED_INDENT_CM} cm)",
                     Severity.WARNING,
                     "Paragraph formatting",
                 )

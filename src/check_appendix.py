@@ -2,6 +2,7 @@ import re
 
 from config import Severity, ValidationError
 from text_normalization import _normalize_text
+from utils import _get_effective_font_name, _get_effective_font_size
 
 
 def _check_appendix_format(document):
@@ -87,3 +88,43 @@ def _check_sequential_numbering(document, items, type="letter"):
                         "Appendix section",
                     )
                 )
+
+
+def _check_appendix_font_name(document):
+    if not document.appendix_paragraphs:
+        return
+    sample = document.appendix_paragraphs[:]
+    for para in sample[::5]:
+        for run in para.runs:
+            if run.text.strip():
+                name = _get_effective_font_name(document, run)
+                if name != "Arial":
+                    document.errors.append(
+                        ValidationError(
+                            "APPENDIX",
+                            f"Appendix font name is incorrect: {name} (expected Arial)",
+                            Severity.WARNING,
+                            "Document Appendix",
+                        )
+                    )
+                    return
+
+
+def _check_appendix_font_size(document):
+    if not document.appendix_paragraphs:
+        return
+    sample = document.appendix_paragraphs[:]
+    for para in sample[::5]:
+        for run in para.runs:
+            if run.text.strip():
+                size = _get_effective_font_size(document, run)
+                if size is None or not (size >= 8):
+                    document.errors.append(
+                        ValidationError(
+                            "APPENDIX",
+                            f"Appendix font size is incorrect: {size}pt (expected >=8)",
+                            Severity.WARNING,
+                            "Document Appendix",
+                        )
+                    )
+                    return
