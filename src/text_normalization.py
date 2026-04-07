@@ -4,14 +4,14 @@ from docx.oxml.ns import qn
 
 
 def _normalize_text(text: str) -> str:
-    """Нормализация текста: замена множественных пробелов/табуляций на один пробел."""
+    """Normalizes text: replaces multiple spaces/tabs with a single space."""
     if not isinstance(text, str):
         return ""
     return re.sub(r"\s+", " ", text).strip()
 
 
 def _clean_empty_paragraphs(document) -> None:
-    """Удаление пустых параграфов из документа."""
+    """Removes empty paragraphs from the document."""
     for p in reversed(document.doc.paragraphs):
         if not p.text.strip():
             parent = p._element.getparent()
@@ -20,12 +20,11 @@ def _clean_empty_paragraphs(document) -> None:
 
 
 def _find_main_document_boundary(document) -> int:
-    """Поиск границы между основным текстом и приложениями."""
+    """Finds the boundary between the main text and appendices."""
     appendix_markers = [
         r"^приложение\s*[№№]?\s*[а-яё1-9]",
-        r"^прил\.\s*",
+        r"^прил.\s*",
     ]
-
     para_idx = 0
     for child in document.doc.element.body:
         if child.tag == qn("w:p"):

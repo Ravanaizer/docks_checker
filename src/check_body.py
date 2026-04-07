@@ -13,7 +13,6 @@ def _check_heading(document):
         r"о\s+внесении\s+изменений\s+в\s+приказ",
     ]
     found = False
-
     for table in document.tables[:3]:
         text = "\n".join(_get_table_text(document, table)).lower()
         if any(re.search(p, text) for p in patterns):
@@ -36,7 +35,7 @@ def _check_heading(document):
                 found = True
                 for run in para.runs:
                     if run.text.strip():
-                        size = _get_effective_font_size(run, document.doc)
+                        size = _get_effective_font_size(document, run)
                         if not (9.5 <= size <= 10.5):
                             document.errors.append(
                                 ValidationError(
@@ -142,7 +141,7 @@ def _check_preamble_structure(document):
 
 
 def _check_command_word(document):
-    patterns = [r"п\s*р\s*и\s*к\s*а\s*з\s*ы\s*в\s*а\s*ю", r"приказываю"]
+    patterns = [r"п\sр\sи\sк\sа\sз\sы\sв\sа\s*ю", r"приказываю"]
     if not any(re.search(p, document.full_text.lower()) for p in patterns):
         document.errors.append(
             ValidationError(
@@ -195,10 +194,10 @@ def _check_reduction_position(document):
 
 def _check_signature_block(document):
     patterns = [
-        r"[а-яё]+\s+[а-яё]\.[а-яё]\.",
-        r"[а-яё]\.[а-яё]\.\s+[а-яё]+",
-        r"директор\.[а-яё]+\s+[а-яё]\.",
-        r"руководитель\.[а-яё]+\s+[а-яё]\.",
+        r"[а-яё]+\s+[а-яё].[а-яё].",
+        r"[а-яё].[а-яё].\s+[а-яё]+",
+        r"директор.[а-яё]+\s+[а-яё].",
+        r"руководитель.[а-яё]+\s+[а-яё].",
     ]
     found = False
     text = _normalize_text(
@@ -206,7 +205,6 @@ def _check_signature_block(document):
     ).lower()
     if any(re.search(p, text) for p in patterns):
         found = True
-
     if not found and document.tables:
         for table in document.tables[-3:]:
             table_text = "\n".join(_get_table_text(document, table)).lower()
@@ -228,11 +226,10 @@ def _check_signature_block(document):
 def _check_list_font_size(
     document, expected_size: float = 12.0, tolerance: float = 0.5
 ) -> None:
-    """Проверяет размер шрифта во всех элементах списков основного текста."""
+    """Checks the font size of all list items in the main text."""
     list_paras = [p for p in document.main_paragraphs if _is_list_paragraph(p)]
     if not list_paras:
         return
-
     for para in list_paras:
         for run in para.runs:
             if run.text.strip():
@@ -246,11 +243,11 @@ def _check_list_font_size(
                             "List items",
                         )
                     )
-                    return  # Останавливаем после первой ошибки, чтобы не засорять отчёт
+                    return
 
 
 def _check_list_font_name(document) -> None:
-    """Проверяет имя шрифта во всех элементах списков основного текста."""
+    """Checks the font name of all list items in the main text."""
     list_paras = [p for p in document.main_paragraphs if _is_list_paragraph(p)]
     if not list_paras:
         return

@@ -8,19 +8,19 @@ def _check_appendix_format(document):
     forbidden = "ёзйочьыъ"
     headers = []
 
-    # Поиск в параграфах
+    # Search in paragraphs
     for para in document.appendix_paragraphs[:30]:
         text = _normalize_text(para.text.lower())
-        if "приложение" in text:
+        if "приложение " in text:
             headers.append({"text": text, "source": "paragraph"})
 
-    # Поиск в таблицах
+    # Search in tables
     for table in document.tables:
         for row in table.rows:
             for cell in row.cells:
                 for para in cell.paragraphs:
                     text = _normalize_text(para.text.lower())
-                    if "приложение" in text:
+                    if "приложение " in text:
                         headers.append({"text": text, "source": "table"})
 
     found_letters = []

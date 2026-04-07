@@ -31,20 +31,20 @@ class DocumentArchitectureValidator:
         self.doc = Document(filepath)
         self.errors: List[ValidationError] = []
 
-        # Очистка пустых параграфов
+        # Clean up empty paragraphs
         _clean_empty_paragraphs(self)
 
         self.paragraphs = self.doc.paragraphs
         self.tables = self.doc.tables
 
-        # Поиск границы основного текста и приложений
+        # Find the boundary between the main text and appendices
         self.main_doc_end_idx = _find_main_document_boundary(self)
 
-        # Разделение частей
+        # Split document parts
         self.main_paragraphs = self.paragraphs[: self.main_doc_end_idx]
         self.appendix_paragraphs = self.paragraphs[self.main_doc_end_idx :]
 
-        # Нормализация текста
+        # Normalize text
         self.main_text = _normalize_text(
             "\n".join([p.text.strip() for p in self.main_paragraphs if p.text.strip()])
         )

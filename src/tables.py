@@ -32,7 +32,7 @@ def _check_table_fonts_name(document):
 
 
 def _get_table_text(document, table) -> List[str]:
-    """Собирает текст из всех ячеек таблицы."""
+    """Collects text from all cells in the table."""
     lines = []
     for row in table.rows:
         for cell in row.cells:
@@ -45,7 +45,7 @@ def _get_table_text(document, table) -> List[str]:
 def _check_table_font_size(
     document, table, expected_size: float, tolerance: float = 0.5
 ) -> bool:
-    """Проверяет, что весь текст в таблице соответствует ожидаемому размеру."""
+    """Checks that all text in the table matches the expected font size."""
     for row in table.rows:
         for cell in row.cells:
             for paragraph in cell.paragraphs:
