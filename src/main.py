@@ -9,6 +9,7 @@ from check_body import (
     _check_command_word,
     _check_control_clause_position,
     _check_heading,
+    _check_indents,
     _check_list_font_name,
     _check_list_font_size,
     _check_preamble_structure,
@@ -67,6 +68,7 @@ class DocumentArchitectureValidator:
         _check_body_font_name(self)
         _check_list_font_name(self)
         _check_signature_font_size(self)
+        _check_indents(self)
         return self.errors
 
     def print_report(self) -> None:

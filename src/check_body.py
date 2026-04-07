@@ -109,7 +109,7 @@ def _check_signature_font_size(document):
                 if size is None or not (size == 10):
                     document.errors.append(
                         ValidationError(
-                            "BODY_FONT",
+                            "SIGNATURE",
                             f"Signature font size is incorrect: {size}pt (expected 10pt)",
                             Severity.WARNING,
                             "Document body",
@@ -265,3 +265,58 @@ def _check_list_font_name(document) -> None:
                         )
                     )
                     return
+
+
+def _check_indents(doc):
+    """
+    Validates that first-line indents in main paragraphs match the standard (1.25 cm).
+    Accounts for style inheritance, EMU unit conversion, and floating-point tolerance.
+    """
+    EXPECTED_INDENT_CM = 1.25
+    TOLERANCE_CM = (
+        0.05  # Allow small rounding differences from Word's internal precision
+    )
+
+    for para in doc.main_paragraphs:
+        # Skip empty paragraphs to avoid false positives
+        if not para.text.strip():
+            continue
+
+        # Step 1: Try to get explicit first-line indent from paragraph formatting
+        first_line = para.paragraph_format.first_line_indent
+
+        # Step 2: If not explicitly set, check the paragraph style (Word often stores indents there)
+        if first_line is None and para.style is not None:
+            try:
+                first_line = para.style.paragraph_format.first_line_indent
+            except Exception:
+                pass  # Style may not have indent defined; fall through to default handling
+
+        # Step 3: Evaluate correctness and prepare display value
+        is_incorrect = False
+        display_value = "Not set (inherited)"
+
+        if first_line is not None:
+            # Convert EMU (English Metric Units) to centimeters for human-readable comparison
+            indent_cm = first_line.cm
+            display_value = f"{indent_cm:.2f} cm"
+            # Use tolerance-based comparison to handle Word's internal rounding
+            if abs(indent_cm - EXPECTED_INDENT_CM) > TOLERANCE_CM:
+                is_incorrect = True
+        else:
+            # Standard requires explicit 1.25 cm indent; missing value is an issue
+            is_incorrect = True
+
+        if is_incorrect:
+            # Truncate text for readability in the report
+            preview = para.text.strip()
+            preview = preview[:60] + "..." if len(preview) > 60 else preview
+
+            doc.errors.append(
+                ValidationError(
+                    "PARAGRAPH_INDENTS",
+                    f"First-line indent incorrect: {display_value} (expected {EXPECTED_INDENT_CM} cm) | Text: '{preview}'",
+                    Severity.WARNING,
+                    "Paragraph formatting",
+                )
+            )
