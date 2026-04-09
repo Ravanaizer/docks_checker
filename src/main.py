@@ -16,6 +16,7 @@ from check_body import (
     _check_indents,
     _check_list_font_name,
     _check_list_font_size,
+    _check_orientation,
     _check_preamble_structure,
     _check_reduction_position,
     _check_signature_block,
@@ -75,6 +76,7 @@ class DocumentArchitectureValidator:
         _check_appendix_format(self)
         _check_appendix_font_name(self)
         _check_appendix_font_size(self)
+        _check_orientation(self)
         return self.errors
 
     def print_report(self) -> None:

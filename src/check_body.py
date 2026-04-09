@@ -1,5 +1,7 @@
 import re
 
+from docx.enum.section import WD_ORIENTATION
+
 from config import Severity, ValidationError
 from tables import _check_table_font_size, _get_table_text
 from text_normalization import _normalize_text
@@ -320,3 +322,16 @@ def _check_indents(doc):
                     "Paragraph formatting",
                 )
             )
+
+
+def _check_orientation(doc):
+    orientation = doc.doc.sections[0].orientation
+    if orientation != WD_ORIENTATION.PORTRAIT:
+        doc.errors.append(
+            ValidationError(
+                "PAGE_ORIENTATION",
+                f"Page orientation incorrect: {orientation} (expected PORTRAIT)",
+                Severity.WARNING,
+                "Document body",
+            )
+        )
