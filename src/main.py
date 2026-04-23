@@ -22,6 +22,7 @@ from check_body import (
     _check_signature_block,
     _check_signature_font_size,
 )
+from check_spacing import _check_structural_spacing
 from config import Severity, ValidationError
 from tables import _check_table_fonts_name, _check_table_fonts_size
 from text_normalization import (
@@ -37,20 +38,31 @@ class DocumentArchitectureValidator:
         self.doc = Document(filepath)
         self.errors: List[ValidationError] = []
 
-        # Clean up empty paragraphs
-        _clean_empty_paragraphs(self)
-
+        # 1. Инициализируем списки параграфов и таблиц сразу после загрузки
         self.paragraphs = self.doc.paragraphs
         self.tables = self.doc.tables
 
-        # Find the boundary between the main text and appendices
+        # 2. Проверяем структуру отступов ДО очистки пустых параграфов
+        # Нам нужно видеть пустые строки, чтобы проверить их количество
+        _check_structural_spacing(self)
+
+        # 3. Очищаем документ от пустых параграфов
+        _clean_empty_paragraphs(self)
+
+        # 4. ОБНОВЛЯЕМ self.paragraphs после очистки.
+        # python-docx возвращает новый список при обращении к свойству.
+        # Это критично, так как _find_main_document_boundary вернет индекс
+        # в очищенном документе, и нам нужно нарезать именно очищенный список.
+        self.paragraphs = self.doc.paragraphs
+
+        # 5. Поиск границы основного текста и приложений
         self.main_doc_end_idx = _find_main_document_boundary(self)
 
-        # Split document parts
+        # 6. Разделение частей документа
         self.main_paragraphs = self.paragraphs[: self.main_doc_end_idx]
         self.appendix_paragraphs = self.paragraphs[self.main_doc_end_idx :]
 
-        # Normalize text
+        # 7. Нормализация текста для проверок содержимого
         self.main_text = _normalize_text(
             "\n".join([p.text.strip() for p in self.main_paragraphs if p.text.strip()])
         )
