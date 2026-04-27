@@ -22,6 +22,7 @@ from check_body import (
     _check_signature_block,
     _check_signature_font_size,
 )
+from check_pages import _check_page_numbering
 from check_spacing import _check_structural_spacing
 from config import Severity, ValidationError
 from tables import _check_table_fonts_name, _check_table_fonts_size
@@ -89,6 +90,7 @@ class DocumentArchitectureValidator:
         _check_appendix_font_name(self)
         _check_appendix_font_size(self)
         _check_orientation(self)
+        _check_page_numbering(self)
         return self.errors
 
     def print_report(self) -> None:

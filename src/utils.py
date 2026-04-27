@@ -106,22 +106,29 @@ def _get_empty_paragraph_font_size(doc, para) -> float:
     return 12.0
 
 
-def _get_paragraph_font_size(para, doc) -> float:
-    """Returns the font size from XML."""
-    # 1. w:pPr -> w:rPr -> w:sz
+def _get_paragraph_font_size(doc, para) -> float:
+    """
+    Extracts font size directly from paragraph XML structure.
+    Critical for empty paragraphs that lack runs. Checks:
+    1. <w:pPr> -> <w:rPr> -> <w:sz> (stored in half-points)
+    2. <w:szCs> (complex scripts fallback)
+    3. Paragraph style -> Normal style -> 12.0pt default
+    """
     pPr = para._element.find(qn("w:pPr"))
     if pPr is not None:
         rPr = pPr.find(qn("w:rPr"))
         if rPr is not None:
+            # Check standard size
             sz = rPr.find(qn("w:sz"))
             if sz is not None:
                 try:
                     val = sz.get(qn("w:val"))
                     if val is not None:
-                        return int(val) / 2.0
+                        return int(val) / 2.0  # Convert half-points to points
                 except (ValueError, TypeError):
                     pass
 
+            # Fallback to complex script size
             sz_cs = rPr.find(qn("w:szCs"))
             if sz_cs is not None:
                 try:
@@ -131,14 +138,13 @@ def _get_paragraph_font_size(para, doc) -> float:
                 except (ValueError, TypeError):
                     pass
 
-    # 2. from style
+    # Fallback to style inheritance
     try:
         if para.style and para.style.font.size:
             return para.style.font.size.pt
     except Exception:
         pass
 
-    # 3. from style Normal
     try:
         normal_style = doc.styles.get("Normal")
         if normal_style and normal_style.font.size:
