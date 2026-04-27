@@ -84,3 +84,66 @@ def _get_effective_font_size(doc, run) -> float:
     except Exception:
         pass
     return 12.0
+
+
+def _get_empty_paragraph_font_size(doc, para) -> float:
+    """
+    Returns the font size from the style
+    """
+    try:
+        if para.style and para.style.font.size:
+            return para.style.font.size.pt
+    except Exception:
+        pass
+
+    try:
+        normal_style = doc.styles.get("Normal")
+        if normal_style and normal_style.font.size:
+            return normal_style.font.size.pt
+    except Exception:
+        pass
+
+    return 12.0
+
+
+def _get_paragraph_font_size(para, doc) -> float:
+    """Returns the font size from XML."""
+    # 1. w:pPr -> w:rPr -> w:sz
+    pPr = para._element.find(qn("w:pPr"))
+    if pPr is not None:
+        rPr = pPr.find(qn("w:rPr"))
+        if rPr is not None:
+            sz = rPr.find(qn("w:sz"))
+            if sz is not None:
+                try:
+                    val = sz.get(qn("w:val"))
+                    if val is not None:
+                        return int(val) / 2.0
+                except (ValueError, TypeError):
+                    pass
+
+            sz_cs = rPr.find(qn("w:szCs"))
+            if sz_cs is not None:
+                try:
+                    val = sz_cs.get(qn("w:val"))
+                    if val is not None:
+                        return int(val) / 2.0
+                except (ValueError, TypeError):
+                    pass
+
+    # 2. from style
+    try:
+        if para.style and para.style.font.size:
+            return para.style.font.size.pt
+    except Exception:
+        pass
+
+    # 3. from style Normal
+    try:
+        normal_style = doc.styles.get("Normal")
+        if normal_style and normal_style.font.size:
+            return normal_style.font.size.pt
+    except Exception:
+        pass
+
+    return 12.0

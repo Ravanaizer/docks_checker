@@ -2,22 +2,20 @@ import re
 
 from config import Severity, ValidationError
 from text_normalization import _normalize_text
-from utils import _get_effective_font_size, _get_table_font_size
+from utils import _get_paragraph_font_size
 
 
 def _check_structural_spacing(document) -> None:
     """
     Проверяет обязательные пустые строки между разделами.
-    Использует позиционное определение блоков, что исключает ошибки
-    при совпадении текста в таблице 'Краткое содержание' с паттернами заголовка/даты.
     """
-    # 1. Строим линейную последовательность всех элементов в порядке XML
+    # 1. Строим линейную последовательность
     doc_sequence = []
     table_idx = 0
     para_idx = 0
 
     for child in document.doc.element.body:
-        tag = child.tag.split("}")[-1]  # 'p' или 'tbl'
+        tag = child.tag.split("}")[-1]
 
         if tag == "p":
             if para_idx < len(document.paragraphs):
@@ -31,11 +29,9 @@ def _check_structural_spacing(document) -> None:
                     }
                 )
                 para_idx += 1
-
         elif tag == "tbl":
             if table_idx < len(document.tables):
                 table = document.tables[table_idx]
-                # Собираем текст из таблицы для возможной верификации
                 tbl_text = " ".join(
                     _normalize_text(p.text).lower()
                     for row in table.rows
@@ -52,18 +48,13 @@ def _check_structural_spacing(document) -> None:
                 )
                 table_idx += 1
 
-    # 2. ПОЗИЦИОННОЕ определение индексов (строго по вашей структуре)
+    # 2. ПОЗИЦИОННОЕ определение индексов
     table_indices = [i for i, x in enumerate(doc_sequence) if x["type"] == "table"]
 
-    # Дата и номер - первая таблица
     idx_date = table_indices[0] if len(table_indices) > 0 else None
-    # Краткое содержание/Заголовок - вторая таблица
     idx_heading = table_indices[1] if len(table_indices) > 1 else None
-    # Подписант - последняя таблица в документе
     idx_signatory = table_indices[-2] if len(table_indices) > 0 else None
 
-    # Поиск преамбулы и распорядительной части среди параграфов
-    # Ищем только после таблицы заголовка, чтобы не задеть шапку
     search_start = idx_heading if idx_heading is not None else 0
     idx_preamble = None
     idx_dispositive = None
@@ -86,12 +77,11 @@ def _check_structural_spacing(document) -> None:
         if idx_preamble and idx_dispositive:
             break
 
-    if idx_dispositive == None:
+    if idx_dispositive is None and idx_preamble is not None:
         idx_dispositive = idx_preamble + 2
 
     # 3. Вспомогательные функции
     def count_empty_between(start_idx, end_idx):
-        """Считает ТОЛЬКО пустые параграфы. Таблицы игнорируются."""
         if start_idx is None or end_idx is None or end_idx <= start_idx + 1:
             return 0
         return sum(
@@ -100,31 +90,27 @@ def _check_structural_spacing(document) -> None:
             if doc_sequence[i]["type"] == "para" and doc_sequence[i]["is_empty"]
         )
 
-    def check_font(item_idx, expected_size, rule_name):
-        """Проверяет размер шрифта в параграфе или таблице."""
-        if item_idx is None or item_idx >= len(doc_sequence):
+    def check_empty_lines_font(start_idx, end_idx, expected_size, rule_name):
+        """Проверяет размер шрифта ПУСТЫХ строк между элементами."""
+        if start_idx is None or end_idx is None:
             return
-        item = doc_sequence[item_idx]
-        size = None
 
-        if item["type"] == "para":
-            for run in item["element"].runs:
-                if run.text.strip():
-                    size = _get_effective_font_size(document.doc, run)
-                    break
-        elif item["type"] == "table":
-            size = _get_table_font_size(item["element"])
+        for i in range(start_idx + 1, end_idx):
+            item = doc_sequence[i]
+            # Проверяем ТОЛЬКО пустые параграфы
+            if item["type"] == "para" and item["is_empty"]:
+                para = item["element"]
+                size = _get_paragraph_font_size(para, document.doc)
 
-        if size is not None and abs(size - expected_size) > 0.5:
-            document.errors.append(
-                ValidationError(
-                    "SPACING_FONT",
-                    f"{rule_name}: {size:.1f}pt (expected {expected_size}pt)",
-                    Severity.WARNING,
-                    rule_name,
-                )
-            )
-        return size
+                if size is not None and abs(size - expected_size) > 0.5:
+                    document.errors.append(
+                        ValidationError(
+                            "SPACING_FONT",
+                            f"{rule_name}: Empty line font {size:.1f}pt (expected {expected_size}pt)",
+                            Severity.WARNING,
+                            rule_name,
+                        )
+                    )
 
     # === ПРИМЕНЕНИЕ ПРАВИЛ ===
 
@@ -142,8 +128,10 @@ def _check_structural_spacing(document) -> None:
                     "Header",
                 )
             )
-        for idx in range(min(idx_heading, idx_date) + 1, max(idx_heading, idx_date)):
-            check_font(idx, 10.0, "Heading-Date")
+        # Проверяем шрифт пустых строк
+        check_empty_lines_font(
+            min(idx_heading, idx_date), max(idx_heading, idx_date), 10.0, "Heading-Date"
+        )
 
     # Правило 2: Шапка → Текст (2 пустые строки, 12pt)
     header_end_idx = (
@@ -151,6 +139,7 @@ def _check_structural_spacing(document) -> None:
         if idx_heading is not None and idx_date is not None
         else None
     )
+
     if header_end_idx is not None and idx_preamble is not None:
         gap = count_empty_between(header_end_idx, idx_preamble)
         if gap != 2:
@@ -162,8 +151,7 @@ def _check_structural_spacing(document) -> None:
                     "Header to Text",
                 )
             )
-        for idx in range(header_end_idx + 1, idx_preamble):
-            check_font(idx, 10.0, "Preamble-Text")
+        check_empty_lines_font(header_end_idx, idx_preamble, 12.0, "Header-Body")
 
     # Правило 3: Преамбула → Приказываю (1 пустая строка, 12pt)
     if idx_preamble is not None and idx_dispositive is not None:
@@ -177,8 +165,7 @@ def _check_structural_spacing(document) -> None:
                     "Body",
                 )
             )
-        for idx in range(idx_preamble, idx_dispositive):
-            check_font(idx, 12.0, "Dispositive")
+        check_empty_lines_font(idx_preamble, idx_dispositive, 12.0, "Preamble-Order")
 
     # Правило 4: Текст → Подписант (2 пустые строки, 12pt)
     body_end_idx = idx_dispositive if idx_dispositive is not None else idx_preamble
@@ -193,5 +180,4 @@ def _check_structural_spacing(document) -> None:
                     "Text to Signature",
                 )
             )
-        for idx in range(body_end_idx, idx_signatory):
-            check_font(idx, 12.0, "Signature")
+        check_empty_lines_font(body_end_idx, idx_signatory, 12.0, "Body-Signature")
