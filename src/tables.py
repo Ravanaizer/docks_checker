@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 from config import Severity, ValidationError
@@ -29,6 +30,15 @@ def _check_table_fonts_name(document):
                     "Tables",
                 )
             )
+            document.errors.append(
+                ValidationError(
+                    "TABLES",
+                    "Size and font in table can indicate blank table",
+                    Severity.INFO,
+                    "Tables",
+                )
+            )
+            return
 
 
 def _get_table_text(document, table) -> List[str]:
@@ -37,7 +47,7 @@ def _get_table_text(document, table) -> List[str]:
     for row in table.rows:
         for cell in row.cells:
             for para in cell.paragraphs:
-                if para.text.strip():
+                if para.text.strip() != "":
                     lines.append(para.text.strip())
     return lines
 
@@ -50,8 +60,19 @@ def _check_table_font_size(
         for cell in row.cells:
             for paragraph in cell.paragraphs:
                 for run in paragraph.runs:
-                    if run.text.strip():
-                        size = _get_effective_font_size(document, run)
+                    if run.text.strip() != "":
+                        size = _get_effective_font_size(document.doc, run)
                         if size is not None and abs(size - expected_size) > tolerance:
                             return False
     return True
+
+
+def _get_main_tables(document):
+    for tbl in document.tables:
+        tbl_text = "\n".join(
+            cell.text for row in tbl.rows for cell in row.cells
+        ).lower()
+        if not re.search(r"приложение\b", tbl_text):
+            document.main_tables.append(tbl)
+        else:
+            break

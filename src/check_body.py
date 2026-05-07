@@ -5,30 +5,51 @@ from docx.enum.section import WD_ORIENTATION
 from config import Severity, ValidationError
 from tables import _check_table_font_size, _get_table_text
 from text_normalization import _normalize_text
-from utils import _get_effective_font_name, _get_effective_font_size, _is_list_paragraph
+from utils import _get_effective_font_size
 
 
 def _check_heading(document):
     patterns = [
-        r"об\s+утверждении",
-        r"о\s+подготовке\s+номенклатуры\s+дел",
-        r"о\s+внесении\s+изменений\s+в\s+приказ",
+        r"\bоб\s+утверждении\b",
+        r"\bо\s+подготовке\s+номенклатуры\s+дел\b",
+        r"\bо\s+внесении\s+изменений\s+в\s+приказ\b",
     ]
     found = False
+
     for table in document.tables[:3]:
-        text = "\n".join(_get_table_text(document, table)).lower()
-        if any(re.search(p, text) for p in patterns):
+        cell_texts = [
+            cell.text.strip()
+            for row in table.rows
+            for cell in row.cells
+            if cell.text.strip()
+        ]
+        table_text = " | ".join(cell_texts).lower()
+
+        if not table_text:
+            continue
+
+        if any(re.search(p, table_text) for p in patterns):
             found = True
             if not _check_table_font_size(document, table, 10):
                 document.errors.append(
                     ValidationError(
                         "HEADING",
                         "Font size in heading table is incorrect (expected 10pt)",
-                        Severity.CRITICAL,
+                        Severity.WARNING,
                         "Table at start",
                     )
                 )
             break
+
+    if not found:
+        document.errors.append(
+            ValidationError(
+                "HEADING",
+                "Heading is missing.",
+                Severity.CRITICAL,
+                "Start of document",
+            )
+        )
 
     if not found:
         for para in document.paragraphs[:10]:
@@ -58,66 +79,6 @@ def _check_heading(document):
                 "Start of document",
             )
         )
-
-
-def _check_body_font_name(document):
-    if not document.main_paragraphs:
-        return
-    sample = document.main_paragraphs[:-2]
-    for para in sample[::5]:
-        for run in para.runs:
-            if run.text.strip():
-                name = _get_effective_font_name(document, run)
-                if name != "Arial":
-                    document.errors.append(
-                        ValidationError(
-                            "BODY_FONT",
-                            f"Body font name is incorrect: {name} (expected Arial)",
-                            Severity.WARNING,
-                            "Document body",
-                        )
-                    )
-                    return
-
-
-def _check_body_font_size(document):
-    if not document.main_paragraphs:
-        return
-    sample = document.main_paragraphs[:-2]
-    for para in sample[::5]:
-        for run in para.runs:
-            if run.text.strip():
-                size = _get_effective_font_size(document, run)
-                if size is None or not (size == 12):
-                    document.errors.append(
-                        ValidationError(
-                            "BODY_FONT",
-                            f"Body font size is incorrect: {size}pt (expected 12pt)",
-                            Severity.WARNING,
-                            "Document body",
-                        )
-                    )
-                    return
-
-
-def _check_signature_font_size(document):
-    if not document.main_paragraphs:
-        return
-    sample = document.main_paragraphs[-2:]
-    for para in sample[::5]:
-        for run in para.runs:
-            if run.text.strip():
-                size = _get_effective_font_size(document, run)
-                if size is None or not (size == 10):
-                    document.errors.append(
-                        ValidationError(
-                            "SIGNATURE",
-                            f"Signature font size is incorrect: {size}pt (expected 10pt)",
-                            Severity.WARNING,
-                            "Document body",
-                        )
-                    )
-                    return
 
 
 def _check_preamble_structure(document):
@@ -195,78 +156,133 @@ def _check_reduction_position(document):
 
 
 def _check_signature_block(document):
+
     patterns = [
-        r"[а-яё]+\s+[а-яё].[а-яё].",
-        r"[а-яё].[а-яё].\s+[а-яё]+",
-        r"директор.[а-яё]+\s+[а-яё].",
-        r"руководитель.[а-яё]+\s+[а-яё].",
+        r"[а-яё]+\s+[а-яё]\.[а-яё]\.",
+        r"[а-яё]\.[а-яё]\.\s+[а-яё]+",
+        r"(?:директор|руководитель)\s*[а-яё]+\s*[а-яё]\.",
     ]
-    found = False
-    text = _normalize_text(
-        "\n".join([p.text for p in document.main_paragraphs[-5:]])
-    ).lower()
-    if any(re.search(p, text) for p in patterns):
-        found = True
-    if not found and document.tables:
-        for table in document.tables[-3:]:
-            table_text = "\n".join(_get_table_text(document, table)).lower()
-            if any(re.search(p, table_text) for p in patterns):
-                found = True
+
+    target_runs = []
+
+    last_paras = (
+        document.main_paragraphs[-5:]
+        if len(document.main_paragraphs) >= 5
+        else document.main_paragraphs
+    )
+    for para in last_paras:
+        if any(re.search(p, para.text, re.IGNORECASE) for p in patterns):
+            target_runs = [run for run in para.runs if run.text.strip()]
+            break
+
+    if not target_runs and document.tables:
+        for table in document.main_tables[:]:
+            tbl_text = "\n".join(_get_table_text(document, table))
+            if any(re.search(p, tbl_text, re.IGNORECASE) for p in patterns):
+                for row in table.rows:
+                    for cell in row.cells:
+                        for p in cell.paragraphs:
+                            target_runs.extend(
+                                [run for run in p.runs if run.text.strip()]
+                            )
                 break
 
-    if not found:
+    if not target_runs:
         document.errors.append(
             ValidationError(
-                "SIGNATURE",
-                "No head signature block found.",
+                "SIGNATURE_BLOCK",
+                "No head signature block found (expected 'Surname I.I.' or position near end).",
                 Severity.CRITICAL,
                 "End of main text",
             )
         )
-
-
-def _check_list_font_size(
-    document, expected_size: float = 12.0, tolerance: float = 0.5
-) -> None:
-    """Checks the font size of all list items in the main text."""
-    list_paras = [p for p in document.main_paragraphs if _is_list_paragraph(p)]
-    if not list_paras:
         return
-    for para in list_paras:
-        for run in para.runs:
-            if run.text.strip():
-                size = _get_effective_font_size(document, run)
-                if size is None or abs(size - expected_size) > tolerance:
-                    document.errors.append(
-                        ValidationError(
-                            "BODY_FONT",
-                            f"List item font size is incorrect: {size}pt (expected {expected_size}pt)",
-                            Severity.WARNING,
-                            "List items",
-                        )
-                    )
-                    return
+
+    for run in target_runs:
+        size = _get_effective_font_size(document, run)
+        if size is None or abs(size - 12.0) > 0.5:
+            document.errors.append(
+                ValidationError(
+                    "SIGNATURE_FONT",
+                    f"Signature font size is incorrect: {size}pt (expected 12pt)",
+                    Severity.WARNING,
+                    "Signature block",
+                )
+            )
+            document.errors.append(
+                ValidationError(
+                    "SIGNATURE_FONT",
+                    "Size and font in block can indicate blank table",
+                    Severity.INFO,
+                    "Signature block",
+                )
+            )
+            return
 
 
-def _check_list_font_name(document) -> None:
-    """Checks the font name of all list items in the main text."""
-    list_paras = [p for p in document.main_paragraphs if _is_list_paragraph(p)]
-    if not list_paras:
+def _check_executant_block(document):
+    patterns = [
+        r"(?:исполнитель|фамилия)\b.*?(?:доп|тел)\b",
+        r"доп\.\s*\d{3,}",
+        r"тел\.\s*[\d\-\(\)\s]{5,}",
+        r"[а-яё]+\s+[а-яё]\.\s*[а-яё]\.\s*[\(]?(?:доп|тел)",
+    ]
+
+    target_runs = []
+
+    last_paras = (
+        document.main_paragraphs[-5:]
+        if len(document.main_paragraphs) >= 5
+        else document.main_paragraphs
+    )
+    for para in last_paras:
+        if any(re.search(p, para.text, re.IGNORECASE) for p in patterns):
+            target_runs = [run for run in para.runs if run.text.strip()]
+            break
+
+    if not target_runs and document.tables:
+        for table in document.main_tables[:]:
+            tbl_text = "\n".join(_get_table_text(document, table))
+            if any(re.search(p, tbl_text, re.IGNORECASE) for p in patterns):
+                for row in table.rows:
+                    for cell in row.cells:
+                        for p in cell.paragraphs:
+                            target_runs.extend(
+                                [run for run in p.runs if run.text.strip()]
+                            )
+                break
+
+    if not target_runs:
+        document.errors.append(
+            ValidationError(
+                "EXECUTANT_BLOCK",
+                "Executant block (ФИО + доп./тел.) not found at the end.",
+                Severity.CRITICAL,
+                "End of document",
+            )
+        )
         return
-    for para in list_paras:
-        for run in para.runs:
-            if run.text.strip():
-                name = _get_effective_font_name(document.doc, run)
-                if name != "Arial":
-                    document.errors.append(
-                        ValidationError(
-                            "LIST_FONT",
-                            f"List item font name is incorrect: {name} (expected Arial)",
-                            Severity.WARNING,
-                            "List items",
-                        )
-                    )
-                    return
+
+    for run in target_runs:
+        size = _get_effective_font_size(document, run)
+        if size is None or abs(size - 10.0) > 0.5:
+            document.errors.append(
+                ValidationError(
+                    "EXECUTANT_FONT",
+                    f"Executant font size is incorrect: {size}pt (expected 10pt)",
+                    Severity.WARNING,
+                    "Executant block",
+                )
+            )
+            document.errors.append(
+                ValidationError(
+                    "EXECUTANT_FONT",
+                    "Size and font in block can indicate blank table",
+                    Severity.INFO,
+                    "Tables",
+                )
+            )
+            return
 
 
 def _check_indents(doc):

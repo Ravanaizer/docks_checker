@@ -12,6 +12,7 @@ def _check_structural_spacing(document) -> None:
     Checks both line count and font size of the empty separator paragraphs.
     """
     # 1. Build a linear sequence of all body elements preserving XML order
+
     doc_sequence = []
     table_idx = 0
     para_idx = 0
@@ -51,21 +52,56 @@ def _check_structural_spacing(document) -> None:
                 )
                 table_idx += 1
 
-    # 2. Positional indexing based on document structure:
-    # [Header Image] -> Table[0]=Date -> Table[1]=Heading/Content -> Text -> Table[-1]=Signature
-    table_indices = [i for i, x in enumerate(doc_sequence) if x["type"] == "table"]
+    # 1. Находим индекс элемента, где впервые встречается слово "приложение"
+    appendix_boundary = len(doc_sequence) + 1  # По умолчанию берем конец документа
+    for idx, item in enumerate(doc_sequence):
+        if "приложение" in item["text"]:
+            appendix_boundary = idx
+            break
 
-    idx_date = table_indices[0] if len(table_indices) > 0 else None
-    idx_heading = table_indices[1] if len(table_indices) > 1 else None
-    idx_signatory = table_indices[-2] if len(table_indices) > 0 else None
+    # 2. Собираем индексы таблиц, которые находятся СТРОГО до начала приложений
+    # Это список чисел (позиций в doc_sequence)
+    main_table_indices = [
+        i
+        for i, x in enumerate(doc_sequence)
+        if x["type"] == "table" and i < appendix_boundary
+    ]
+
+    # 3. Распределяем по переменным с контентной верификацией
+    idx_date = None
+    idx_heading = None
+    idx_signatory = main_table_indices[-1] if main_table_indices else None
+
+    date_pats = [r"\d{1,2}\.\d{1,2}\.\d{4}", r"№\s*\d+", r"от\s+\d"]
+    heading_pats = [r"об\s+утверждении", r"о\s+подготовке", r"о\s+внесении"]
+
+    for i in main_table_indices:
+        tbl_text = doc_sequence[i]["text"]
+        if idx_date is None and any(re.search(p, tbl_text) for p in date_pats):
+            idx_date = i
+        if idx_heading is None and any(re.search(p, tbl_text) for p in heading_pats):
+            idx_heading = i
+
+    # Фоллбэк на позиции, если regex не сработал (редкие кейсы)
+    if idx_date is None and len(main_table_indices) > 0:
+        idx_date = main_table_indices[0]
+    if idx_heading is None and len(main_table_indices) > 1:
+        idx_heading = main_table_indices[1]
 
     # Search for preamble and dispositive markers only after the heading table
     search_start = idx_heading if idx_heading is not None else 0
     idx_preamble = None
     idx_dispositive = None
+    idx_executant = None
 
     preamble_pats = [r"в\s+соответствии", r"согласно", r"в\s+целях", r"во\s+исполнение"]
     dispositive_pats = [r"приказываю"]
+    executant_pats = [
+        r"(?:исполнитель|фамилия)\b.*?(?:доп|тел)\b",
+        r"доп\.\s*\d{3,}",
+        r"тел\.\s*[\d\-\(\)\s]{5,}",
+        r"[а-яё]+\s+[а-яё]\.\s*[а-яё]\.\s*[\(]?(?:доп|тел)",
+    ]
 
     for i in range(search_start, len(doc_sequence)):
         item = doc_sequence[i]
@@ -79,7 +115,11 @@ def _check_structural_spacing(document) -> None:
             re.search(p, item["text"]) for p in dispositive_pats
         ):
             idx_dispositive = i
-        if idx_preamble and idx_dispositive:
+        if idx_executant is None and any(
+            re.search(p, item["text"]) for p in executant_pats
+        ):
+            idx_executant = i
+        if idx_preamble and idx_dispositive and idx_executant:
             break
 
     if idx_dispositive is None and idx_preamble is not None:
@@ -113,6 +153,13 @@ def _check_structural_spacing(document) -> None:
                         )
                     )
 
+    _check_table_internal_empties(
+        document, idx_signatory, doc_sequence, "Signature table"
+    )
+
+    _check_table_internal_empties(document, idx_date, doc_sequence, "Date/Number table")
+    _check_table_internal_empties(document, idx_heading, doc_sequence, "Heading table")
+
     # === APPLY SPACING RULES ===
 
     # Rule 1: Heading ↔ Date (1 empty line, 10pt)
@@ -125,7 +172,7 @@ def _check_structural_spacing(document) -> None:
                 ValidationError(
                     "SPACING_EMPTY",
                     f"Heading-Date: {gap} (expected 1)",
-                    Severity.WARNING,
+                    Severity.CRITICAL,
                     "Header",
                 )
             )
@@ -180,3 +227,66 @@ def _check_structural_spacing(document) -> None:
                 )
             )
         check_empty_lines_font(body_end_idx, idx_signatory, 12.0, "Body-Signature")
+
+    # Rule 5: Signature → Executant (Non zero empty lines)
+    if idx_executant is not None and idx_signatory is not None:
+        gap = count_empty_between(idx_signatory, idx_executant)
+        if gap == 0:
+            document.errors.append(
+                ValidationError(
+                    "SPACING_EMPTY",
+                    f"Signature-Executant: {gap} (expected >= 1)",
+                    Severity.WARNING,
+                    "Signature to Executant",
+                )
+            )
+            document.errors.append(
+                ValidationError(
+                    "SPACING_EMPTY",
+                    "Spaces must be between the table of signers and the performer, not inside",
+                    Severity.INFO,
+                    "Signature to Executant",
+                )
+            )
+        # check_empty_lines_font(body_end_idx, idx_signatory, 12.0, "Signature-Executant")
+
+
+def _check_table_internal_empties(document, table_idx, doc_sequence, label: str):
+    """
+    Checks table cells for internal empty paragraphs.
+    An error is raised ONLY if a cell contains more than one empty paragraph.
+    """
+    if table_idx is None or table_idx >= len(doc_sequence):
+        return
+
+    item = doc_sequence[table_idx]
+    if item["type"] != "table":
+        return
+
+    table = item["element"]
+
+    for row_idx, row in enumerate(table.rows):
+        for cell_idx, cell in enumerate(row.cells):
+            empty_count = 0
+
+            for para in cell.paragraphs:
+                # Check if the paragraph is truly empty (no visible text in style or runs)
+                has_text = para.text.strip() or any(
+                    run.text.strip() for run in para.runs
+                )
+                if not has_text:
+                    empty_count += 1
+
+            # Trigger error only if there is MORE THAN ONE empty line inside the cell
+            if empty_count > 1:
+                document.errors.append(
+                    ValidationError(
+                        "TABLE_LAYOUT",
+                        f"{label}: Found {empty_count} empty lines inside table cell "
+                        f"(row {row_idx + 1}, cell {cell_idx + 1}). "
+                        "Multiple empty lines inside cells are not allowed. Place spacing after the table instead.",
+                        Severity.INFO,
+                        "Table internal structure",
+                    )
+                )
+                return  # One warning per table is sufficient to avoid spamming

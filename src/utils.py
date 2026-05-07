@@ -44,26 +44,58 @@ def _get_font_from_xml(run) -> str | None:
     return None
 
 
-def _get_effective_font_name(doc, run):
-    """Reliably retrieves the font name: Run -> XML -> Paragraph Style -> Normal."""
-    # 1. Explicit font in Run (via API or directly from XML)
-    font_name = run.font.name or _get_font_from_xml(run)
-    if font_name:
-        return font_name
-    # 2. Paragraph style
+# def _get_effective_font_name(doc, run):
+#     """Reliably retrieves the font name: Run -> XML -> Paragraph Style -> Normal."""
+#     # 1. Explicit font in Run (via API or directly from XML)
+#     font_name = run.font.name or _get_font_from_xml(run)
+#     if font_name:
+#         return font_name
+#     # 2. Paragraph style
+#     try:
+#         style_name = run._parent.style.font.name
+#         if style_name:
+#             return style_name
+#     except Exception:
+#         pass
+#     # 3. Default document style
+#     try:
+#         normal_name = doc.styles["Normal"].font.name
+#         if normal_name:
+#             return normal_name
+#     except Exception:
+#         pass
+#     return "Calibri"
+
+
+def _get_effective_font_name(doc, run) -> str | None:
+    """
+    Reliable font name extraction with full inheritance chain.
+    Returns None if font is truly undefined (theme-inherited).
+    """
+    # 1. Explicit run font (API)
+    if run.font.name:
+        return run.font.name
+
+    # 2. Explicit run font (XML)
+    xml_font = _get_font_from_xml(run)
+    if xml_font:
+        return xml_font
+
+    # 3. Paragraph style
     try:
-        style_name = run._parent.style.font.name
-        if style_name:
-            return style_name
+        para = run._parent
+        if hasattr(para, "style") and para.style and para.style.font.name:
+            return para.style.font.name
     except Exception:
         pass
-    # 3. Default document style
-    try:
-        normal_name = doc.styles["Normal"].font.name
-        if normal_name:
-            return normal_name
-    except Exception:
-        pass
+
+    # 4. Normal style
+    # try:
+    #     if doc.styles["Normal"].font.name:
+    #         return doc.styles["Normal"].font.name
+    # except Exception:
+    #     pass
+
     return "Calibri"
 
 

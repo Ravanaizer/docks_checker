@@ -112,7 +112,7 @@ def _check_page_numbering(document) -> None:
             ValidationError(
                 "PAGE_NUMBERING",
                 "'Different First Page' option is not enabled.",
-                Severity.WARNING,
+                Severity.CRITICAL,
                 "Page Setup",
             )
         )
