@@ -28,7 +28,7 @@ def _get_table_font_name(doc, table) -> str:
             for paragraph in cell.paragraphs:
                 for run in paragraph.runs:
                     if run.text.strip():
-                        font_name = _get_effective_font_name(doc, run)
+                        font_name = _get_effective_font_name(doc.doc, run)
                         if font_name:
                             return font_name
     return "Calibri"
@@ -40,63 +40,58 @@ def _get_font_from_xml(run) -> str | None:
     if rPr is not None:
         rFonts = rPr.find(qn("w:rFonts"))
         if rFonts is not None:
-            return rFonts.get(qn("w:hAnsi")) or rFonts.get(qn("w:ascii"))
+            for attr in (qn("w:hAnsi"), qn("w:ascii"), qn("w:cs"), qn("w:eastAsia")):
+                val = rFonts.get(attr)
+                if val:
+                    return val
     return None
 
 
-# def _get_effective_font_name(doc, run):
-#     """Reliably retrieves the font name: Run -> XML -> Paragraph Style -> Normal."""
-#     # 1. Explicit font in Run (via API or directly from XML)
-#     font_name = run.font.name or _get_font_from_xml(run)
-#     if font_name:
-#         return font_name
-#     # 2. Paragraph style
-#     try:
-#         style_name = run._parent.style.font.name
-#         if style_name:
-#             return style_name
-#     except Exception:
-#         pass
-#     # 3. Default document style
-#     try:
-#         normal_name = doc.styles["Normal"].font.name
-#         if normal_name:
-#             return normal_name
-#     except Exception:
-#         pass
-#     return "Calibri"
-
-
-def _get_effective_font_name(doc, run) -> str | None:
-    """
-    Reliable font name extraction with full inheritance chain.
-    Returns None if font is truly undefined (theme-inherited).
-    """
-    # 1. Explicit run font (API)
+def _get_effective_font_name(document, run) -> str | None:
+    # 1. python-docx API (fast check)
     if run.font.name:
         return run.font.name
 
-    # 2. Explicit run font (XML)
-    xml_font = _get_font_from_xml(run)
-    if xml_font:
-        return xml_font
+    # 2. Direct XML parsing of <w:rFonts>
+    # Word sometimes leaves run.font.name empty but specifies the font in the XML
+    val = _get_font_from_xml(run)
+    if val:
+        return val
 
-    # 3. Paragraph style
+    # 3. Character Style (applied to the specific run/selection)
+    if run.style is not None:
+        try:
+            if run.style.font.name:
+                return run.style.font.name
+        except Exception:
+            pass
+
+    # 4. Paragraph Style
     try:
-        para = run._parent
-        if hasattr(para, "style") and para.style and para.style.font.name:
-            return para.style.font.name
+        if run.paragraph.style.font.name:
+            return run.paragraph.style.font.name
     except Exception:
         pass
 
-    # 4. Normal style
-    # try:
-    #     if doc.styles["Normal"].font.name:
-    #         return doc.styles["Normal"].font.name
-    # except Exception:
-    #     pass
+    # 5. Global "Normal" style
+    try:
+        if document.styles["Normal"].font.name:
+            return document.styles["Normal"].font.name
+    except Exception:
+        pass
 
-    return "Calibri"
+    # 6. Document settings (settings.xml → w:defaultFonts)
+    try:
+        settings = document.doc.settings.element
+        default_fonts = settings.find(qn("w:defaultFonts"))
+        if default_fonts is not None:
+            return default_fonts.get(qn("w:hAnsi")) or default_fonts.get(qn("w:ascii"))
+    except Exception:
+        pass
+
+    # 7. If all None → Word falls back to the Document Theme font (usually Calibri or Times New Roman)
+    # Return None so the subsequent check correctly flags it as "not Arial"
+    return None
 
 
 def _get_effective_font_size(doc, run) -> float:

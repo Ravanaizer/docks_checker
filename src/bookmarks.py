@@ -3,9 +3,7 @@ from docx.oxml.ns import qn
 from config import Severity, ValidationError
 
 
-def _check_bookmarks_presence(
-    document: str, bookmark_names: list[str] | None = None
-) -> dict[str, bool]:
+def _check_bookmarks_presence(document, bookmark_names: list[str] | None = None):
     """
     Проверяет наличие закладок (Bookmarks) в .docx файле.
     Возвращает dict вида: {'data': True, 'nomer': False}

@@ -142,15 +142,15 @@ class DocumentArchitectureValidator:
 
 
 if __name__ == "__main__":
-    # for sdk in range(1, 15):
-    #     validator = DocumentArchitectureValidator(
-    #         f"../tests/{sdk}.docx"
-    #     )  # "standart.docx")  #
-    #     validator.validate()
-    #     validator.print_report()
+    for sdk in range(1, 15):
+        validator = DocumentArchitectureValidator(
+            f"../tests/{sdk}.docx"
+        )  # "standart.docx")  #
+        validator.validate()
+        validator.print_report()
 
-    validator = DocumentArchitectureValidator(
-        "standart.docx"
-    )  # f"../tests/13.docx")  #
-    validator.validate()
-    validator.print_report()
+    # validator = DocumentArchitectureValidator(
+    #     f"../tests/10.docx"
+    # )  # "standart.docx")  #
+    # validator.validate()
+    # validator.print_report()
