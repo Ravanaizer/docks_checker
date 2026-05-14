@@ -34,6 +34,18 @@ def _get_table_font_name(doc, table) -> str:
     return "Calibri"
 
 
+THEME_FONT_MAP = {
+    "minorHAnsi": "Calibri",
+    "minorAscii": "Calibri",
+    "majorHAnsi": "Cambria",
+    "majorAscii": "Cambria",
+    "minorEastAsia": "Calibri",
+    "minorCs": "Calibri",
+    "majorEastAsia": "Cambria",
+    "majorCs": "Cambria",
+}
+
+
 def _get_font_from_xml(run) -> str | None:
     """Directly extracts the font name from <w:rFonts> if the API returns None."""
     rPr = run._element.find(qn("w:rPr"))
@@ -44,6 +56,15 @@ def _get_font_from_xml(run) -> str | None:
                 val = rFonts.get(attr)
                 if val:
                     return val
+            for attr in [
+                qn("w:hAnsiTheme"),
+                qn("w:asciiTheme"),
+                qn("w:eastAsiaTheme"),
+                qn("w:csTheme"),
+            ]:
+                theme_name = rFonts.get(attr)
+                if theme_name:
+                    return THEME_FONT_MAP.get(theme_name, f"Theme:{theme_name}")
     return None
 
 
